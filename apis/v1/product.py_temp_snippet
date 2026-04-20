@@ -1,0 +1,81 @@
+
+@router.get("/personalized", response_model=List[ProductResponse])
+async def get_personalized_products(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """
+    Fetch personalized product recommendations based on recently viewed products.
+    Logic:
+    1. Get last 5 recently viewed products for the session.
+    2. Extract their categories and brands.
+    3. Find other products in those categories/brands.
+    4. Exclude the products already viewed.
+    5. Order by created_at DESC (freshness) or random.
+    """
+    user_id = getattr(request.state, "user_id", None)
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        # Fallback to trending/random if no session
+        # For simplicity in this function, return empty or generic
+        # But get_home_section handles fallback usually.
+        # Let's return empty list here and let caller decide, or return trending?
+        # Requirement says "Personalized", so if no history, maybe return nothing or trending.
+        # Let's return trending as fallback within this API to be robust.
+        return (await get_trending_products(page=1, limit=limit, db=db))["items"]
+
+    # 1. Get recently viewed
+    recent_stmt = (
+        select(RecentlyViewed.product_id)
+        .where(RecentlyViewed.session_id == session_id)
+        .order_by(RecentlyViewed.viewed_at.desc())
+        .limit(5)
+    )
+    result = await db.execute(recent_stmt)
+    viewed_product_ids = result.scalars().all()
+
+    if not viewed_product_ids:
+        return (await get_trending_products(page=1, limit=limit, db=db))["items"]
+
+    # 2. Get details of viewed products to find categories/brands
+    details_stmt = select(Product.category_id, Product.brand_id).where(Product.id.in_(viewed_product_ids))
+    result = await db.execute(details_stmt)
+    details = result.all()
+    
+    category_ids = {row.category_id for row in details if row.category_id}
+    brand_ids = {row.brand_id for row in details if row.brand_id}
+
+    # 3. Find recommendations
+    query = (
+        select(Product)
+        .where(
+            or_(
+                Product.category_id.in_(category_ids),
+                Product.brand_id.in_(brand_ids)
+            )
+        )
+        .where(Product.id.notin_(viewed_product_ids))
+        .where(Product.status == "active")
+        .order_by(Product.created_at.desc()) # Show new items in those categories
+        .limit(limit)
+        .options(
+            selectinload(Product.brand),
+            selectinload(Product.review_stats),
+            selectinload(Product.reviews),
+            selectinload(Product.variants).selectinload(ProductVariant.attributes),
+            selectinload(Product.variants).selectinload(ProductVariant.images),
+            selectinload(Product.images),
+        )
+    )
+
+    result = await db.execute(query)
+    recommendations = result.scalars().unique().all()
+    
+    # If not enough recommendations, fill with trending?
+    if len(recommendations) < limit:
+        # potential enhancement, skipping for now to keep simple
+        pass
+
+    return recommendations
