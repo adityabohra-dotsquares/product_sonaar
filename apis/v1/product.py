@@ -416,7 +416,7 @@ async def _get_products_list(
     # Sort params to ensure consistent key
     param_string = json.dumps(params, sort_keys=True, default=str)
     # v3: Nested variants + Contextual filters fix
-    cache_key = f"products_list_v4:{hashlib.md5(param_string.encode()).hexdigest()}"
+    cache_key = f"products_list_v4:{hashlib.sha256(param_string.encode()).hexdigest()}"
 
     # Try to get from cache
     # try:
@@ -1480,6 +1480,9 @@ async def get_product(
         product_data["category_name"] = product.category_name
         product_data["category_slug"] = product.category_slug
         product_data["unique_code"] = product.unique_code
+        product_data["ean_code"] = product.ean
+        product_data["supplier"] = product.supplier
+
         
         # logger.info(f"Serialization | Time: {time.time() - serialize_start:.4f}s")
         
@@ -1510,6 +1513,7 @@ async def get_product(
             product_data["length"] = variant_data["length"]
             product_data["weight"] = variant_data["weight"]
             product_data["ean"] = variant_data["ean"]
+            product_data["ean_code"] = variant_data["ean"]
             product_data["hs_code"] = variant_data["hs_code"]
             
             # Metadata keys
