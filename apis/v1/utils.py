@@ -11,6 +11,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Dict, Any, Tuple, Optional, Literal, Set
 from io import StringIO, BytesIO
+import secrets
 import random
 import string
 from openpyxl import load_workbook, Workbook
@@ -91,7 +92,7 @@ async def generate_unique_product_code(db: AsyncSession, existing_codes: Set[str
     """Generate a unique 10-digit alphanumeric product code."""
     chars = string.ascii_uppercase + string.digits
     while True:
-        code = "".join(random.choices(chars, k=10))
+        code = "".join(secrets.choice(chars) for _ in range(10))
         if existing_codes is not None:
             if code not in existing_codes:
                 existing_codes.add(code)
